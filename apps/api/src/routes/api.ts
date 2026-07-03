@@ -101,6 +101,12 @@ const apiEndpoints = [
     auth: false,
     description: 'Server metrics (detailed when authenticated)',
   },
+  {
+    method: 'GET',
+    path: '/api/hello',
+    auth: false,
+    description: 'Hello-world JSON endpoint for bot detection tests',
+  },
   { method: 'GET', path: '/api/docs', auth: false, description: 'API documentation' },
   {
     method: 'POST',
@@ -355,6 +361,10 @@ router.get('/config', async (req: Request, res: Response) => {
     },
     accounts: accountKeys,
   });
+});
+
+router.get('/hello', (_req: Request, res: Response) => {
+  return res.json({ ok: true });
 });
 
 // API documentation endpoint
