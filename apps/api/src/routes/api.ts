@@ -235,6 +235,12 @@ const apiEndpoints = [
   { method: 'GET', path: '/api/actions/summary', auth: true, description: 'Get action summary' },
   {
     method: 'GET',
+    path: '/api/actions/unified',
+    auth: true,
+    description: 'Merged Instagram and Twitter action log with consistent schema',
+  },
+  {
+    method: 'GET',
     path: '/api/actions/export',
     auth: true,
     description: 'Export logs as CSV/JSON',
@@ -1195,6 +1201,48 @@ router.get('/scrape-followers', scrapeLimiter, async (req: Request, res: Respons
       error: getErrorMessage(error),
     });
     res.status(500).send('Error scraping followers.');
+  }
+});
+
+router.get('/actions/unified', async (req: Request, res: Response) => {
+  try {
+    const rawLimit = Number(req.query.limit);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : 20;
+    const rawOffset = Number(req.query.offset);
+    const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+
+    const result = await listActionLogs({
+      limit: Math.max(1, Math.min(limit, 100)),
+      offset,
+      sort: 'desc',
+    });
+
+    const unifiedActions = result.actions
+      .filter((entry) => ['instagram', 'twitter'].indexOf(entry.platform.toLowerCase()) !== -1)
+      .map((entry) => ({
+        platform: entry.platform.toLowerCase() === 'twitter' ? 'twitter' : 'instagram',
+        action: entry.action,
+        timestamp: entry.createdAt,
+        status: entry.status,
+        metadata: {
+          id: entry.id,
+          account: entry.account,
+          username: entry.username,
+          error: entry.error,
+          ...(entry.details || {}),
+        },
+      }));
+
+    return res.json({
+      actions: unifiedActions,
+      pagination: {
+        ...result.pagination,
+        returned: unifiedActions.length,
+      },
+    });
+  } catch (error) {
+    logger.error('Unified actions listing error:', error);
+    return res.status(500).json({ error: 'Failed to load unified action logs' });
   }
 });
 

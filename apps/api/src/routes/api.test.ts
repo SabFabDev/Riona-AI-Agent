@@ -47,6 +47,9 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import apiRoutes from './api';
 import { signToken } from '../secret';
+import { listActionLogs } from '../services/actionLog';
+
+const mockedListActionLogs = listActionLogs as jest.MockedFunction<typeof listActionLogs>;
 
 const app = express();
 app.use(express.json());
@@ -153,6 +156,76 @@ describe('API routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.username).toBe('testuser');
       expect(res.body.account).toBe('default');
+    });
+
+    test('GET /api/actions/unified returns merged Instagram and Twitter actions', async () => {
+      mockedListActionLogs.mockResolvedValueOnce({
+        actions: [
+          {
+            id: 'ig-1',
+            platform: 'instagram',
+            action: 'post-photo',
+            account: 'default',
+            username: 'ig-user',
+            status: 'success',
+            details: { mediaId: 'm1' },
+            createdAt: '2026-07-03T10:00:00.000Z',
+          },
+          {
+            id: 'tw-1',
+            platform: 'twitter',
+            action: 'post-tweet',
+            account: 'default',
+            status: 'error',
+            error: 'rate limited',
+            details: { tweetId: 't1' },
+            createdAt: '2026-07-03T09:00:00.000Z',
+          },
+          {
+            id: 'sys-1',
+            platform: 'system',
+            action: 'logout',
+            account: 'default',
+            status: 'success',
+            createdAt: '2026-07-03T08:00:00.000Z',
+          },
+        ],
+        pagination: { total: 3, limit: 20, offset: 0, hasMore: false },
+      });
+
+      const res = await request(app)
+        .get('/api/actions/unified?limit=20&offset=0')
+        .set('Cookie', `token=${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.actions).toEqual([
+        {
+          platform: 'instagram',
+          action: 'post-photo',
+          timestamp: '2026-07-03T10:00:00.000Z',
+          status: 'success',
+          metadata: {
+            id: 'ig-1',
+            account: 'default',
+            username: 'ig-user',
+            mediaId: 'm1',
+          },
+        },
+        {
+          platform: 'twitter',
+          action: 'post-tweet',
+          timestamp: '2026-07-03T09:00:00.000Z',
+          status: 'error',
+          metadata: {
+            id: 'tw-1',
+            account: 'default',
+            error: 'rate limited',
+            tweetId: 't1',
+          },
+        },
+      ]);
+      expect(res.body.pagination.returned).toBe(2);
+      expect(mockedListActionLogs).toHaveBeenCalledWith({ limit: 20, offset: 0, sort: 'desc' });
     });
   });
 });
